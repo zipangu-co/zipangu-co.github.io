@@ -2,7 +2,7 @@ import {
 	OrthographicCamera,
 	PlaneGeometry,
 	Mesh
-} from '../../../build/three.module.js';
+} from 'https://threejs.org/build/three.module.js';
 
 function Pass() {
 
