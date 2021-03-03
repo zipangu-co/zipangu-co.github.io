@@ -1,119 +1,175 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 	<head>
-		<title>three.js css3d - youtube</title>
-		<meta charset="utf-8">
+		<title>three.js WebGL 2 - Multisampled Renderbuffers</title>
+		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
-				background-color: #ffffff;
+				background-color: #fff;
+				color: #222;
 			}
 
-			#blocker {
+			a {
+				color: #08f;
+			}
+
+			#container {
 				position: absolute;
-				top: 0;
-				left: 0;
-				bottom: 0;
-				right: 0;
+				top: 70px;
+				width: 100%;
+				bottom: 0px;
 			}
 		</style>
 	</head>
+
 	<body>
-		<div id="container"></div>
-		<div id="blocker"></div>
+
+		<div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - Multisampled Renderbuffers<br />
+			Left: WebGLRenderTarget, Right: WebGLMultisampleRenderTarget.
+		</div>
+		<div id="container">
+		</div>
 
 		<script type="module">
 
-			import * as THREE from 'https://threejs.org/build/three.module.js';
+			import * as THREE from '../build/three.module.js';
 
-			import { TrackballControls } from './jsm/controls/TrackballControls.js';
-			import { CSS3DRenderer, CSS3DObject } from './jsm/renderers/CSS3DRenderer.js';
+			import { EffectComposer } from './jsm/postprocessing/EffectComposer.js';
+			import { RenderPass } from './jsm/postprocessing/RenderPass.js';
+			import { ShaderPass } from './jsm/postprocessing/ShaderPass.js';
+			import { CopyShader } from './jsm/shaders/CopyShader.js';
+			import { WEBGL } from './jsm/WebGL.js';
 
-			let camera, scene, renderer;
-			let controls;
+			if ( WEBGL.isWebGL2Available() === false ) {
 
-			function Element( id, x, y, z, ry ) {
+				document.body.appendChild( WEBGL.getWebGL2ErrorMessage() );
 
-				const div = document.createElement( 'div' );
-				div.style.width = '480px';
-				div.style.height = '360px';
-				div.style.backgroundColor = '#000';
+			}
 
-				const iframe = document.createElement( 'iframe' );
-				iframe.style.width = '480px';
-				iframe.style.height = '360px';
-				iframe.style.border = '0px';
-				iframe.src = [ 'https://www.youtube.com/embed/', id, '?rel=0' ].join( '' );
-				div.appendChild( iframe );
+			let camera, renderer, clock, group, container;
 
-				const object = new CSS3DObject( div );
-				object.position.set( x, y, z );
-				object.rotation.y = ry;
-
-				return object;
-
-			};
+			let composer1, composer2;
 
 			init();
 			animate();
 
 			function init() {
 
-				const container = document.getElementById( 'container' );
+				container = document.getElementById( 'container' );
 
-				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 5000 );
-				camera.position.set( 500, 350, 750 );
+				camera = new THREE.PerspectiveCamera( 45, container.offsetWidth / container.offsetHeight, 1, 2000 );
+				camera.position.z = 500;
 
-				scene = new THREE.Scene();
+				const scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0xffffff );
+				scene.fog = new THREE.Fog( 0xcccccc, 100, 1500 );
 
-				renderer = new CSS3DRenderer();
-				renderer.setSize( window.innerWidth, window.innerHeight );
-				container.appendChild( renderer.domElement );
+				clock = new THREE.Clock();
 
-				const group = new THREE.Group();
-				group.add( new Element( 'SJOz3qjfQXU', 0, 0, 240, 0 ) );
-				group.add( new Element( 'Y2-xZ-1HE-Q', 240, 0, 0, Math.PI / 2 ) );
-				group.add( new Element( 'IrydklNpcFI', 0, 0, - 240, Math.PI ) );
-				group.add( new Element( '9ubytEsCaS0', - 240, 0, 0, - Math.PI / 2 ) );
+				//
+
+				const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x222222, 1.5 );
+				hemiLight.position.set( 1, 1, 1 );
+				scene.add( hemiLight );
+
+				//
+
+				group = new THREE.Group();
+
+				const geometry = new THREE.SphereGeometry( 10, 64, 40 );
+				const material = new THREE.MeshLambertMaterial( { color: 0xee0808 } );
+				const material2 = new THREE.MeshBasicMaterial( { color: 0xffffff, wireframe: true } );
+
+				for ( let i = 0; i < 10; i ++ ) {
+
+					const mesh = new THREE.Mesh( geometry, material );
+					mesh.position.x = Math.random() * 600 - 300;
+					mesh.position.y = Math.random() * 600 - 300;
+					mesh.position.z = Math.random() * 600 - 300;
+					mesh.rotation.x = Math.random();
+					mesh.rotation.z = Math.random();
+					mesh.scale.setScalar( Math.random() * 5 + 5 );
+					group.add( mesh );
+
+					const mesh2 = new THREE.Mesh( geometry, material2 );
+					mesh2.position.copy( mesh.position );
+					mesh2.rotation.copy( mesh.rotation );
+					mesh2.scale.copy( mesh.scale );
+					group.add( mesh2 );
+
+				}
+
 				scene.add( group );
 
-				controls = new TrackballControls( camera, renderer.domElement );
-				controls.rotateSpeed = 4;
+				//
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.autoClear = false;
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( container.offsetWidth, container.offsetHeight );
+				container.appendChild( renderer.domElement );
+
+				//
+
+				const parameters = {
+					format: THREE.RGBFormat
+				};
+
+				const size = renderer.getDrawingBufferSize( new THREE.Vector2() );
+				const renderTarget = new THREE.WebGLMultisampleRenderTarget( size.width, size.height, parameters );
+
+				const renderPass = new RenderPass( scene, camera );
+				const copyPass = new ShaderPass( CopyShader );
+
+				//
+
+				composer1 = new EffectComposer( renderer );
+				composer1.addPass( renderPass );
+				composer1.addPass( copyPass );
+
+				//
+
+				composer2 = new EffectComposer( renderer, renderTarget );
+				composer2.addPass( renderPass );
+				composer2.addPass( copyPass );
+
+				//
 
 				window.addEventListener( 'resize', onWindowResize );
-
-				// Block iframe events when dragging camera
-
-				const blocker = document.getElementById( 'blocker' );
-				blocker.style.display = 'none';
-
-				controls.addEventListener( 'start', function () {
-
-					blocker.style.display = '';
-
-				} );
-				controls.addEventListener( 'end', function () {
-
-					blocker.style.display = 'none';
-
-				} );
 
 			}
 
 			function onWindowResize() {
 
-				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.aspect = container.offsetWidth / container.offsetHeight;
 				camera.updateProjectionMatrix();
-				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				renderer.setSize( container.offsetWidth, container.offsetHeight );
+				composer1.setSize( container.offsetWidth, container.offsetHeight );
+				composer2.setSize( container.offsetWidth, container.offsetHeight );
 
 			}
 
 			function animate() {
 
 				requestAnimationFrame( animate );
-				controls.update();
-				renderer.render( scene, camera );
+
+				const halfWidth = container.offsetWidth / 2;
+
+				group.rotation.y += clock.getDelta() * 0.1;
+
+				renderer.setScissorTest( true );
+
+				renderer.setScissor( 0, 0, halfWidth - 1, container.offsetHeight );
+				composer1.render();
+
+				renderer.setScissor( halfWidth, 0, halfWidth, container.offsetHeight );
+				composer2.render();
+
+				renderer.setScissorTest( false );
 
 			}
 
